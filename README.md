@@ -2,7 +2,7 @@
 
 **why use many token when few token do trick**
 
-A collection of Claude Code / OpenCode skills that cut ~75% of output tokens by making Claude talk like a smart caveman — while keeping full technical accuracy.
+A collection of Claude Code / OpenCode / GitHub Copilot skills that cut ~75% of output tokens by making agents talk like a smart caveman — while keeping full technical accuracy.
 
 Based on [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman), stripped of the Chinese (wenyan) modes and the OpenAI Codex plugin wrapper. Just the skills, ready to install.
 
@@ -23,11 +23,36 @@ Same fix. 75% less word. Brain still big.
 
 | Skill | File | What it do |
 |-------|------|------------|
-| **caveman** | `caveman.skill` | Core mode. Three levels: lite, full, ultra. Drop filler, keep substance. |
-| **caveman-commit** | `caveman-commit.skill` | Terse Conventional Commits. ≤50 char subject. Body only when why not obvious. |
-| **caveman-review** | `caveman-review.skill` | One-line code review: `L42: 🔴 bug: user null. Add guard.` |
-| **caveman-compress** | `caveman-compress.skill` | Compress .md files to caveman prose. Save ~40-60% input tokens. |
-| **caveman-help** | `caveman-help.skill` | Quick reference card. One-shot, not persistent. |
+| **caveman** | `skills/caveman/SKILL.md` | Core mode. Three levels: lite, full, ultra. Drop filler, keep substance. |
+| **caveman-commit** | `skills/caveman-commit/SKILL.md` | Terse Conventional Commits. ≤50 char subject. Body only when why not obvious. |
+| **caveman-review** | `skills/caveman-review/SKILL.md` | One-line code review: `L42: 🔴 bug: user null. Add guard.` |
+| **caveman-compress** | `skills/caveman-compress/SKILL.md` | Compress .md files to caveman prose. Save ~40-60% input tokens. |
+| **caveman-help** | `skills/caveman-help/SKILL.md` | Quick reference card. One-shot, not persistent. |
+
+---
+
+## Install — GitHub Copilot CLI
+
+Run:
+
+```bash
+./install-copilot.sh
+```
+
+This installs personal agent skills to `~/.copilot/skills/` and adds an always-on caveman block to `~/.copilot/copilot-instructions.md`. If Copilot CLI is already running, reload skills with:
+
+```text
+/skills reload
+/skills info caveman
+```
+
+For repo-scoped skills instead, copy skill directories into `.github/skills/`, `.claude/skills/`, or `.agents/skills/`.
+
+Uninstall:
+
+```bash
+./uninstall-copilot.sh
+```
 
 ---
 
@@ -35,28 +60,26 @@ Same fix. 75% less word. Brain still big.
 
 ### Step 1: Install the skills
 
-Each `.skill` file is a zip that Claude Code can install directly:
+Use the installer:
 
 ```bash
-claude install-skill caveman.skill
-claude install-skill caveman-commit.skill
-claude install-skill caveman-review.skill
-claude install-skill caveman-compress.skill
-claude install-skill caveman-help.skill
+./install.sh
 ```
 
-Or all at once:
+Or copy the skill directories manually:
 
 ```bash
-for f in caveman*.skill; do claude install-skill "$f"; done
+mkdir -p ~/.claude/skills
+cp -R skills/caveman* ~/.claude/skills/
 ```
 
 This places them in `~/.claude/skills/` (personal, available in all projects).
 
-For project-only install, unzip into `.claude/skills/` in your repo:
+For project-only install, copy into `.claude/skills/` in your repo:
 
 ```bash
-for f in caveman*.skill; do unzip -o "$f" -d .claude/skills/; done
+mkdir -p .claude/skills
+cp -R skills/caveman* .claude/skills/
 ```
 
 ### Step 2: Make caveman always on (optional)
@@ -131,7 +154,7 @@ OpenCode reads skills from several locations. For global install (all projects):
 ```bash
 # OpenCode native path
 mkdir -p ~/.config/opencode/skills
-for f in caveman*.skill; do unzip -o "$f" -d ~/.config/opencode/skills/; done
+cp -R skills/caveman* ~/.config/opencode/skills/
 ```
 
 OpenCode also supports Claude-compatible paths, so this works too:
@@ -139,7 +162,7 @@ OpenCode also supports Claude-compatible paths, so this works too:
 ```bash
 # Claude-compatible path (works for both Claude Code and OpenCode)
 mkdir -p ~/.claude/skills
-for f in caveman*.skill; do unzip -o "$f" -d ~/.claude/skills/; done
+cp -R skills/caveman* ~/.claude/skills/
 ```
 
 For project-local install:
@@ -147,11 +170,11 @@ For project-local install:
 ```bash
 # OpenCode native
 mkdir -p .opencode/skills
-for f in caveman*.skill; do unzip -o "$f" -d .opencode/skills/; done
+cp -R skills/caveman* .opencode/skills/
 
 # Or Claude-compatible
 mkdir -p .claude/skills
-for f in caveman*.skill; do unzip -o "$f" -d .claude/skills/; done
+cp -R skills/caveman* .claude/skills/
 ```
 
 ### Step 2: Make caveman always on (optional)
@@ -189,7 +212,7 @@ Since OpenCode reads `~/.claude/skills/` and `~/.claude/CLAUDE.md` as fallbacks,
 ```bash
 # Install skills to shared path
 mkdir -p ~/.claude/skills
-for f in caveman*.skill; do unzip -o "$f" -d ~/.claude/skills/; done
+cp -R skills/caveman* ~/.claude/skills/
 
 # Add always-on instruction to shared memory file
 cat >> ~/.claude/CLAUDE.md << 'EOF'

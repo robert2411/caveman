@@ -3,12 +3,16 @@ set -euo pipefail
 
 # ─────────────────────────────────────────────────────────
 # 🪨 Caveman Skills Installer — GitHub Copilot
-#    Installs skills as VS Code prompt files and a
-#    user-level custom instructions file for Copilot Chat.
+#    Installs agent skills and local custom instructions for
+#    GitHub Copilot CLI.
 # ─────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_SOURCE="$SCRIPT_DIR/skills"
+TARGET_DIR="$HOME/.copilot/skills"
+INSTRUCTIONS_FILE="$HOME/.copilot/copilot-instructions.md"
+BLOCK_START="<!-- caveman-mode:start -->"
+BLOCK_END="<!-- caveman-mode:end -->"
 
 # Colors
 RED='\033[0;31m'
@@ -21,18 +25,6 @@ echo ""
 echo -e "${CYAN}🪨 Caveman Skills Installer — GitHub Copilot${NC}"
 echo -e "${CYAN}   why use many token when few token do trick${NC}"
 echo ""
-
-# ── Detect VS Code user prompts directory ────────────────
-
-case "$(uname -s)" in
-    Darwin)  VSCODE_USER_DIR="$HOME/Library/Application Support/Code/User" ;;
-    Linux)   VSCODE_USER_DIR="$HOME/.config/Code/User" ;;
-    MINGW*|MSYS*|CYGWIN*) VSCODE_USER_DIR="${APPDATA:-$HOME/AppData/Roaming}/Code/User" ;;
-    *)       VSCODE_USER_DIR="$HOME/.config/Code/User" ;;
-esac
-
-PROMPTS_DIR="$VSCODE_USER_DIR/prompts"
-INSTRUCTIONS_FILE="$HOME/.config/github-copilot/caveman-instructions.md"
 
 # ── Verify source ────────────────────────────────────────
 
@@ -50,84 +42,38 @@ fi
 echo -e "Found ${GREEN}${SKILL_COUNT}${NC} skills to install."
 echo ""
 
-# ── Convert SKILL.md → .prompt.md ────────────────────────
-# Strip YAML frontmatter, rewrap with Copilot prompt-file
-# frontmatter (mode + description).
+# ── Install skills ───────────────────────────────────────
 
-convert_skill() {
-    local src="$1"
-    local dest="$2"
-    local description body esc_desc
-
-    # Extract description from YAML frontmatter (single or multi-line).
-    description=$(awk '
-        /^---$/ { n++; next }
-        n==1 && /^description:/ {
-            sub(/^description:[[:space:]]*/, "")
-            sub(/^>[[:space:]]*/, "")
-            desc = $0
-            while ((getline line) > 0 && line !~ /^---$/ && line !~ /^[a-zA-Z_-]+:/) {
-                sub(/^[[:space:]]+/, " ", line)
-                desc = desc line
-            }
-            sub(/^[[:space:]]+/, "", desc)
-            sub(/[[:space:]]+$/, "", desc)
-            print desc
-            exit
-        }
-    ' "$src")
-
-    [ -z "$description" ] && description="Caveman skill"
-
-    # Body = everything after the closing --- of the frontmatter.
-    body=$(awk '
-        /^---$/ { n++; if (n==2) { started=1; next } }
-        started { print }
-    ' "$src")
-
-    # Escape single quotes in description for YAML single-quoted string.
-    esc_desc=$(printf '%s' "$description" | sed "s/'/''/g")
-
-    {
-        echo "---"
-        echo "mode: 'ask'"
-        echo "description: '${esc_desc}'"
-        echo "---"
-        echo ""
-        echo "$body"
-    } > "$dest"
-}
-
-# ── Install prompt files ─────────────────────────────────
-
-mkdir -p "$PROMPTS_DIR"
+mkdir -p "$TARGET_DIR"
 
 for skill_dir in "$SKILLS_SOURCE"/*/; do
     skill_name=$(basename "$skill_dir")
-    src="$skill_dir/SKILL.md"
-    dest="$PROMPTS_DIR/${skill_name}.prompt.md"
+    dest="$TARGET_DIR/$skill_name"
 
-    [ -f "$src" ] || continue
+    [ -f "$skill_dir/SKILL.md" ] || continue
 
-    if [ -f "$dest" ]; then
-        echo -e "  ${YELLOW}↻${NC} $skill_name.prompt.md (overwriting)"
+    if [ -d "$dest" ]; then
+        echo -e "  ${YELLOW}↻${NC} $skill_name (overwriting)"
     else
-        echo -e "  ${GREEN}+${NC} $skill_name.prompt.md"
+        echo -e "  ${GREEN}+${NC} $skill_name"
     fi
 
-    convert_skill "$src" "$dest"
+    rm -rf "$dest"
+    cp -r "$skill_dir" "$dest"
 done
 
 echo ""
-echo -e "${GREEN}✅ Prompt files installed to:${NC}"
-echo -e "   $PROMPTS_DIR"
+echo -e "${GREEN}✅ Skills installed to:${NC}"
+echo -e "   $TARGET_DIR"
 echo ""
 
-# ── Install user-level custom instructions file ──────────
+# ── Install local custom instructions block ──────────────
 
 mkdir -p "$(dirname "$INSTRUCTIONS_FILE")"
-cat > "$INSTRUCTIONS_FILE" <<'EOF'
-# Caveman mode — custom instructions for GitHub Copilot
+
+CAVEMAN_BLOCK=$(cat <<EOF
+$BLOCK_START
+## Caveman mode
 
 Respond terse like smart caveman. All technical substance stay. Only fluff die.
 
@@ -147,55 +93,57 @@ Auto-clarity — drop caveman mode for:
 - Multi-step sequences where fragment order risks misread
 - When user asks to clarify or repeats a question
 Resume caveman after the clear part is done.
+$BLOCK_END
 EOF
+)
 
-echo -e "${GREEN}✅ Instructions file written:${NC}"
+if [ -f "$INSTRUCTIONS_FILE" ] && grep -q "$BLOCK_START" "$INSTRUCTIONS_FILE" 2>/dev/null; then
+    temp_file=$(mktemp)
+    awk -v start="$BLOCK_START" -v end="$BLOCK_END" '
+        $0 == start { skip=1; next }
+        $0 == end { skip=0; next }
+        !skip { print }
+    ' "$INSTRUCTIONS_FILE" > "$temp_file"
+    {
+        cat "$temp_file"
+        printf '\n%s\n' "$CAVEMAN_BLOCK"
+    } > "$INSTRUCTIONS_FILE"
+    rm -f "$temp_file"
+    echo -e "${YELLOW}↻${NC} Updated caveman block in:"
+else
+    {
+        [ ! -s "$INSTRUCTIONS_FILE" ] || printf '\n'
+        printf '%s\n' "$CAVEMAN_BLOCK"
+    } >> "$INSTRUCTIONS_FILE"
+    echo -e "${GREEN}+${NC} Added caveman block to:"
+fi
 echo -e "   $INSTRUCTIONS_FILE"
 echo ""
 
-# ── Always-on wiring instructions ────────────────────────
-
-echo -e "${CYAN}Enable always-on caveman in Copilot Chat?${NC}"
+echo -e "${CYAN}Notes:${NC}"
+echo "  Copilot CLI loads local instructions from:"
+echo "    $INSTRUCTIONS_FILE"
 echo ""
-echo "  Two options — pick whichever you prefer:"
+echo "  For repo-scoped always-on behavior instead, copy that block into:"
+echo "    .github/copilot-instructions.md"
 echo ""
-echo -e "  ${YELLOW}Option A — Per-repo (recommended):${NC}"
-echo "    Create .github/copilot-instructions.md in your repo. Copilot Chat"
-echo "    auto-loads it. Easiest to copy ours:"
-echo ""
-echo "      mkdir -p .github && cp \"$INSTRUCTIONS_FILE\" .github/copilot-instructions.md"
-echo ""
-echo -e "  ${YELLOW}Option B — User-level (all repos, VS Code):${NC}"
-echo "    Add to your VS Code user settings.json:"
-echo ""
-cat <<EOF
-      "github.copilot.chat.codeGeneration.instructions": [
-        { "file": "$INSTRUCTIONS_FILE" }
-      ],
-      "github.copilot.chat.commitMessageGeneration.instructions": [
-        { "file": "$INSTRUCTIONS_FILE" }
-      ],
-      "github.copilot.chat.reviewSelection.instructions": [
-        { "file": "$INSTRUCTIONS_FILE" }
-      ]
-EOF
-echo ""
-echo "    Also enable prompt files (if not already):"
-echo ""
-echo "      \"chat.promptFiles\": true"
+echo "  If Copilot CLI is already running, reload skills with:"
+echo "    /skills reload"
+echo "  Then confirm with:"
+echo "    /skills info caveman"
 echo ""
 
 # ── Verify ───────────────────────────────────────────────
 
-echo -e "${CYAN}Installed prompt files:${NC}"
-for pf in "$PROMPTS_DIR"/caveman*.prompt.md; do
-    [ -f "$pf" ] || continue
-    name=$(basename "$pf" .prompt.md)
+echo -e "${CYAN}Installed skills:${NC}"
+for skill_dir in "$TARGET_DIR"/caveman*/; do
+    [ -f "$skill_dir/SKILL.md" ] || continue
+    name=$(basename "$skill_dir")
     echo -e "  ${GREEN}✓${NC} /$name"
 done
 
 echo ""
-echo -e "${GREEN}Done.${NC} Restart VS Code. Invoke a skill from Copilot Chat with:"
+echo -e "${GREEN}Done.${NC} Start or reload Copilot CLI. Invoke a skill with:"
 echo ""
 echo "  /caveman         — activate caveman mode"
 echo "  /caveman-commit  — terse commit message"
